@@ -1,0 +1,6 @@
+{
+  "name": "Trader Vai AI Bot",
+  "description": "Powerful AI Trading Signal Bot for Quotex markets with laser scanner, deep candlestick logic analysis, Gemini high-thinking, text-to-speech audio alerts, and risk management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
