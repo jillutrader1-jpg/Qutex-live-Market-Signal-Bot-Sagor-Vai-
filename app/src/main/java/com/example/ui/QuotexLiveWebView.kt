@@ -126,25 +126,17 @@ class QuotexWebViewController {
             val width = view.width
             val height = view.height
             if (width > 0 && height > 0) {
-                // Ensure drawing cache is enabled for WebKit view hierarchy
-                view.isDrawingCacheEnabled = true
-                view.buildDrawingCache()
-                val cachedBitmap = view.drawingCache
-                if (cachedBitmap != null && !cachedBitmap.isRecycled) {
-                    val copy = Bitmap.createScaledBitmap(cachedBitmap, maxOf(1, width / 2), maxOf(1, height / 2), true)
-                    view.isDrawingCacheEnabled = false
-                    return copy
-                }
-                view.isDrawingCacheEnabled = false
-
-                // Primary fallback: Draw view into high-resolution ARGB_8888 bitmap
-                val scaledWidth = maxOf(1, width / 2)
-                val scaledHeight = maxOf(1, height / 2)
-                val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
+                // Primary high-fidelity capture: Draw view hierarchy directly onto ARGB_8888 bitmap
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bitmap)
-                canvas.scale(0.5f, 0.5f)
                 view.draw(canvas)
-                bitmap
+
+                // Downscale smoothly to half size for low-latency AI processing
+                val scaled = Bitmap.createScaledBitmap(bitmap, maxOf(1, width / 2), maxOf(1, height / 2), true)
+                if (scaled != bitmap) {
+                    bitmap.recycle()
+                }
+                scaled
             } else {
                 null
             }
@@ -180,6 +172,10 @@ fun QuotexLiveWebView(
                     val codeCacheDir = File(ctx.cacheDir, "WebView/Default/HTTP Cache/Code Cache")
                     File(codeCacheDir, "js").mkdirs()
                     File(codeCacheDir, "wasm").mkdirs()
+                } catch (_: Exception) {}
+
+                try {
+                    WebView.enableSlowWholeDocumentDraw()
                 } catch (_: Exception) {}
 
                 WebView(ctx).apply {
@@ -236,6 +232,26 @@ fun QuotexLiveWebView(
                             super.onPageFinished(view, url)
                             isLoading = false
                             url?.let { currentUrl = it }
+
+                            // Continuously observe Quotex DOM to detect price action and candle colors
+                            val script = """
+                                (function() {
+                                    try {
+                                        window.__quotex_state = window.__quotex_state || { lastTrend: 'UP' };
+                                        setInterval(function() {
+                                            // Check price or payout or candle indicators
+                                            var greenCandles = document.querySelectorAll('.chart-candle--up, [class*="green"], [class*="bullish"]').length;
+                                            var redCandles = document.querySelectorAll('.chart-candle--down, [class*="red"], [class*="bearish"]').length;
+                                            if (greenCandles > redCandles) {
+                                                window.__quotex_state.lastTrend = 'UP';
+                                            } else if (redCandles > greenCandles) {
+                                                window.__quotex_state.lastTrend = 'DOWN';
+                                            }
+                                        }, 1000);
+                                    } catch(e) {}
+                                })();
+                            """.trimIndent()
+                            view?.evaluateJavascript(script, null)
                         }
 
                         override fun onReceivedError(
