@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.annotation.SuppressLint
+import java.io.File
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.http.SslError
@@ -163,6 +164,13 @@ fun QuotexLiveWebView(
                 .fillMaxSize()
                 .testTag("quotex_live_webview"),
             factory = { ctx ->
+                // Ensure HTTP Cache Code Cache directories exist to suppress Chromium simple_file_enumerator error
+                try {
+                    val codeCacheDir = File(ctx.cacheDir, "WebView/Default/HTTP Cache/Code Cache")
+                    File(codeCacheDir, "js").mkdirs()
+                    File(codeCacheDir, "wasm").mkdirs()
+                } catch (_: Exception) {}
+
                 WebView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -196,7 +204,6 @@ fun QuotexLiveWebView(
                         allowContentAccess = true
                         mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                         cacheMode = WebSettings.LOAD_DEFAULT
-                        offscreenPreRaster = true
                     }
 
                     webViewClient = object : WebViewClient() {

@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -77,6 +78,14 @@ import com.example.ui.theme.MyApplicationTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Ensure WebView HTTP and Code Cache directories exist to prevent Chromium simple_file_enumerator error
+        try {
+            val codeCacheDir = File(cacheDir, "WebView/Default/HTTP Cache/Code Cache")
+            File(codeCacheDir, "js").mkdirs()
+            File(codeCacheDir, "wasm").mkdirs()
+        } catch (_: Exception) {}
+
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
