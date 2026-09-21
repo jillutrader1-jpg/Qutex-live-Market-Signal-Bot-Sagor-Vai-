@@ -126,10 +126,21 @@ class QuotexWebViewController {
             val width = view.width
             val height = view.height
             if (width > 0 && height > 0) {
-                // 50% scale + RGB_565 avoids heavy allocations, preventing frame drops in the live chart
+                // Ensure drawing cache is enabled for WebKit view hierarchy
+                view.isDrawingCacheEnabled = true
+                view.buildDrawingCache()
+                val cachedBitmap = view.drawingCache
+                if (cachedBitmap != null && !cachedBitmap.isRecycled) {
+                    val copy = Bitmap.createScaledBitmap(cachedBitmap, maxOf(1, width / 2), maxOf(1, height / 2), true)
+                    view.isDrawingCacheEnabled = false
+                    return copy
+                }
+                view.isDrawingCacheEnabled = false
+
+                // Primary fallback: Draw view into high-resolution ARGB_8888 bitmap
                 val scaledWidth = maxOf(1, width / 2)
                 val scaledHeight = maxOf(1, height / 2)
-                val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.RGB_565)
+                val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bitmap)
                 canvas.scale(0.5f, 0.5f)
                 view.draw(canvas)
