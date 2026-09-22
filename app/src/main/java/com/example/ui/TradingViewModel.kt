@@ -303,7 +303,7 @@ class TradingViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Scan live Quotex screen via captured WebView bitmap with low latency
      */
-    fun scanLiveQuotex(bitmap: Bitmap?) {
+    fun scanLiveQuotex(bitmap: Bitmap?, trendHint: String = "AUTO") {
         if (_uiState.value.isScanning) return
 
         soundHelper.playScannerSound()
@@ -319,7 +319,7 @@ class TradingViewModel(application: Application) : AndroidViewModel(application)
             // Launch AI analysis concurrently in background without blocking
             val analysisDeferred = async(Dispatchers.IO) {
                 if (bitmap != null) {
-                    geminiService.analyzeChartImage(bitmap, "Quotex Live Platform")
+                    geminiService.analyzeChartImage(bitmap, "Quotex Live Platform", trendHint)
                 } else {
                     val currentState = _uiState.value
                     geminiService.analyzeCandlestickMarket(

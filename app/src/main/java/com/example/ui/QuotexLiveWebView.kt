@@ -2,9 +2,14 @@ package com.example.ui
 
 import android.annotation.SuppressLint
 import java.io.File
+import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.http.SslError
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -74,6 +79,7 @@ import androidx.compose.ui.viewinterop.AndroidView
  */
 class QuotexWebViewController {
     private var webView: WebView? = null
+    var lastDetectedTrend: String = "UP"
 
     fun attach(view: WebView) {
         webView = view
@@ -117,29 +123,84 @@ class QuotexWebViewController {
         webView?.loadUrl(url)
     }
 
+    fun evaluateTrendFromDom(onResult: (String) -> Unit) {
+        val view = webView ?: run {
+            onResult(lastDetectedTrend)
+            return
+        }
+        try {
+            view.evaluateJavascript("(function() { return (window.__quotex_state && window.__quotex_state.lastTrend) ? window.__quotex_state.lastTrend : 'AUTO'; })();") { res ->
+                val clean = res?.replace("\"", "")?.trim() ?: "AUTO"
+                if (clean == "UP" || clean == "DOWN") {
+                    lastDetectedTrend = clean
+                }
+                onResult(lastDetectedTrend)
+            }
+        } catch (_: Exception) {
+            onResult(lastDetectedTrend)
+        }
+    }
+
     /**
      * Capture the current rendered frame of the Quotex chart with optimized scaling to prevent lag
      */
     fun captureCurrentScreen(): Bitmap? {
         val view = webView ?: return null
-        return try {
-            val width = view.width
-            val height = view.height
-            if (width > 0 && height > 0) {
-                // Primary high-fidelity capture: Draw view hierarchy directly onto ARGB_8888 bitmap
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                view.draw(canvas)
+        val width = view.width
+        val height = view.height
+        if (width <= 0 || height <= 0) return null
 
-                // Downscale smoothly to half size for low-latency AI processing
-                val scaled = Bitmap.createScaledBitmap(bitmap, maxOf(1, width / 2), maxOf(1, height / 2), true)
-                if (scaled != bitmap) {
-                    bitmap.recycle()
+        // Try PixelCopy from Window first (captures hardware-accelerated WebGL / Canvas / Chromium layers)
+        try {
+            val activity = view.context as? Activity
+            val window = activity?.window
+            if (window != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val location = IntArray(2)
+                view.getLocationInWindow(location)
+                val srcRect = android.graphics.Rect(
+                    location[0],
+                    location[1],
+                    location[0] + width,
+                    location[1] + height
+                )
+                val pixelBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val latch = java.util.concurrent.CountDownLatch(1)
+                var success = false
+
+                PixelCopy.request(
+                    window,
+                    srcRect,
+                    pixelBitmap,
+                    { copyResult ->
+                        success = (copyResult == PixelCopy.SUCCESS)
+                        latch.countDown()
+                    },
+                    Handler(Looper.getMainLooper())
+                )
+
+                // Wait up to 350ms for the frame to be copied from the surface
+                latch.await(350, java.util.concurrent.TimeUnit.MILLISECONDS)
+                if (success) {
+                    val scaled = Bitmap.createScaledBitmap(pixelBitmap, maxOf(1, width / 2), maxOf(1, height / 2), true)
+                    if (scaled != pixelBitmap) {
+                        pixelBitmap.recycle()
+                    }
+                    return scaled
                 }
-                scaled
-            } else {
-                null
             }
+        } catch (_: Exception) {}
+
+        // Fallback: draw view hierarchy directly
+        return try {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            view.draw(canvas)
+
+            val scaled = Bitmap.createScaledBitmap(bitmap, maxOf(1, width / 2), maxOf(1, height / 2), true)
+            if (scaled != bitmap) {
+                bitmap.recycle()
+            }
+            scaled
         } catch (_: Exception) {
             null
         }

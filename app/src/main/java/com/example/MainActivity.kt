@@ -274,7 +274,9 @@ fun TradingBotApp(viewModel: TradingViewModel = viewModel()) {
                     isScanning = uiState.isScanning,
                     onScanClick = {
                         val bitmap = webViewController.captureCurrentScreen()
-                        viewModel.scanLiveQuotex(bitmap)
+                        webViewController.evaluateTrendFromDom { trend ->
+                            viewModel.scanLiveQuotex(bitmap, trend)
+                        }
                     },
                     modifier = Modifier
                         .align(Alignment.CenterStart)
